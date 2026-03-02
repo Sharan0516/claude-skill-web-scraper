@@ -85,6 +85,12 @@ This phase prevents wasted effort. Complete all steps before starting the loop.
 If login is required: navigate to the URL and take a screenshot. Confirm with the user that
 the page shows authenticated content (not a login wall). Do not proceed until confirmed.
 
+> **Important — Playwright browser is an isolated session.** It does NOT share cookies or
+> login state with the user's regular browser. Even if the user says "I'm already logged in",
+> they mean their regular browser. You must confirm they have also logged in inside the
+> Playwright browser window specifically. Ask: "Have you logged in to [site] in the browser
+> window that Playwright opened?" before proceeding.
+
 ### 2b. Apply Filters / Search Terms
 If the user specified filters (e.g. "Industry: Construction", "Location: United States"):
 - Apply them in the UI before scraping
@@ -449,12 +455,77 @@ Status file: ~/Downloads/mit_alumni_construction_status.md
 ## Site-Specific Playbooks
 
 ### LinkedIn Connections
+
+#### Your own connections
 - URL: `https://www.linkedin.com/mynetwork/invite-connect/connections/`
 - Login: Always required
 - Pagination: Infinite scroll — scroll bottom, wait 2s, check new cards loaded, repeat
 - Key selectors: `.mn-connection-card`, `.mn-connection-card__name`, `.mn-connection-card__occupation`
 - Rate limiting: Add 2–3s delay between scrolls. LinkedIn throttles aggressively.
 - Cap: LinkedIn shows max ~3,000 connections via this URL
+
+#### Another person's connections
+To scrape connections from someone else's profile, use the search URL embedded in their
+"500+ connections" link. Navigate to their profile first, then find the link:
+
+```
+https://www.linkedin.com/search/results/people/?origin=MEMBER_PROFILE_CANNED_SEARCH
+  &connectionOf=["PROFILE_URN_ID"]
+  &network=["F","S"]
+```
+
+The `PROFILE_URN_ID` (e.g. `ACoAACh44kABdfoGUTegnxbINVarKm-nH28qj9Y`) is embedded in the
+connections link href on the profile page. You can also extract it from any messaging URL
+on the profile. Note: you can only view connections of people who have made them visible.
+
+#### CSS selectors are unreliable on LinkedIn — use innerText line-parsing instead
+
+LinkedIn frequently changes its CSS class names. **Do NOT rely on class-based selectors**
+like `.entity-result__title-text` or `.reusable-search__result-container` — they will
+silently return empty results when LinkedIn updates its frontend.
+
+Instead, use `innerText` line-parsing anchored to the connection-degree line:
+
+```javascript
+() => {
+  const main = document.querySelector('main');
+  const listItems = Array.from(main.querySelectorAll('li')).filter(li => {
+    const text = li.innerText?.trim();
+    return text && text.length > 10 && !text.includes('Are these results helpful');
+  });
+
+  return listItems.map(li => {
+    const lines = li.innerText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    const name = lines[0] || '';
+
+    // Anchor to "Xnd/rd/st degree connection" line — headline is always next
+    const degreeIdx = lines.findIndex(l => l.includes('degree connection'));
+    const headline  = degreeIdx !== -1 ? lines[degreeIdx + 1] || '' : '';
+    const location  = degreeIdx !== -1 ? lines[degreeIdx + 2] || '' : '';
+
+    // Parse headline: "Title @ Company" or "Title at Company" or free-form
+    let title = '', company = '';
+    if (headline.includes(' @ ')) {
+      const parts = headline.split(' @ ');
+      title   = parts[0].split('|')[0].trim();
+      company = parts[1].split('|')[0].trim();
+    } else if (/ at /.test(headline)) {
+      const parts = headline.split(/ at /);
+      title   = parts[0].trim();
+      company = parts.slice(1).join(' at ').split('|')[0].trim();
+    } else {
+      // Free-form headline (e.g. "Skill1 | Skill2 | Skill3") — use as title, no company
+      title = headline.split('|')[0].trim();
+    }
+
+    return { name, title, company, location };
+  }).filter(r => r.name);
+}
+```
+
+> **Note on headline parsing:** LinkedIn's headline is a free-form text field. When a person
+> writes `"Strategy | Yale | HEC Paris"` without a clear title/company separator, company will
+> be empty. This is expected — do not treat it as an extraction failure.
 
 ### Alumni Directories (MIT, Harvard, etc.)
 - Usually SPA (React/Angular) — always use stability-wait before extracting
@@ -479,6 +550,7 @@ Status file: ~/Downloads/mit_alumni_construction_status.md
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | 0 records extracted | Content not loaded / wrong selectors | Re-probe DOM, add stability wait |
+| 0 records on LinkedIn search | CSS classes changed | Switch to `innerText` line-parsing (see LinkedIn playbook) |
 | Same records every page | Pagination not working | Check URL change; switch to URL-based |
 | Records have empty fields | Wrong child selectors | Re-inspect with children probe |
 | Page shows login wall | Session expired | Ask user to re-authenticate |
