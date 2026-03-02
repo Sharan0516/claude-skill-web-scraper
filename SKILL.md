@@ -20,6 +20,34 @@ Handles login-gated sites, pagination, resumable sessions, deduplication, and po
 
 ---
 
+## How to Use
+
+### Direct invocation
+In Claude Code, type:
+```
+/web-scraper-extractor
+```
+Or just describe what you want — Claude will trigger this skill automatically.
+
+### Natural language triggers
+- *"Extract all contacts from [URL] into a CSV"*
+- *"Scrape my LinkedIn connections into a spreadsheet"*
+- *"Pull all attendees from this conference page"*
+- *"Grab every listing from this directory into a CSV"*
+- *"Resume the scraping session from yesterday"*
+
+### Works great for
+- LinkedIn connections
+- Alumni directories (MIT, Harvard, etc.)
+- Conference attendees (Luma, Whova, Eventbrite)
+- Business directories and membership sites
+- Any paginated or scroll-based listing
+
+> **Want to scrape AND score leads in one go?** Use `/leads-pipeline` instead —
+> it runs this skill first, then automatically scores every company for fit.
+
+---
+
 ## FIRST TIME SETUP
 
 If the user is running this skill for the first time, or says "set up the scraper" /
